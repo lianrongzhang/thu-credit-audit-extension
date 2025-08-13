@@ -80,9 +80,3 @@
 
 - ✅ 已測試：Chrome 桌面版 115+
 - ⚠️ 若網站 HTML 結構異動，可能需調整 `popup.js` 中的 `parseMustTable` 或 `scrapeTranscriptFromActiveTab` 方法
-
----
-
-## 📄 License
-
-MIT License
