@@ -2,8 +2,8 @@
 
 一個專為 **東海大學學生** 設計的 Chrome 擴充功能，能夠從學校官網自動擷取與分析「必修科目表」與「歷年成績」，並提供學分比對、修課狀態檢查與 CSV 匯出功能。
 
-![screenshot](screenshot.png)
-
+![screenshot](screenshot0.png)
+![screenshot](screenshot1.png)
 ---
 
 ## 🔧 功能簡介
