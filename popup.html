@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>THU 必修科目表擷取器</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="wrap">
+    <h1>必修科目表</h1>
+
+    <label>
+      學年度
+      <!-- 由 JS 動態塞入最新年度清單 -->
+      <select id="setyear"></select>
+    </label>
+
+    <label>
+      學制
+      <select id="stype">
+        <option value="A" selected>日間學士班</option>
+        <option value="D">博士班</option>
+        <option value="E">進修學士班</option>
+        <option value="G">碩士班</option>
+      </select>
+    </label>
+
+    <label>
+      學系
+      <select id="majr"></select>
+    </label>
+
+    <div class="btns">
+      <button id="fetchBtn">查詢</button>
+      <button id="compareBtn">學分比對</button>
+      <button id="exportBtn" disabled>匯出 CSV</button>
+    </div>
+
+    <div id="status" class="status"></div>
+    <div id="result" class="result"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
