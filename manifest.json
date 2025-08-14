@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "THU 必修科目表擷取器",
-  "version": "1.0.1",
+  "version": "0.1.0",
   "action": { "default_title": "THU 必修科目表擷取器" },
   "permissions": [
     "storage",
