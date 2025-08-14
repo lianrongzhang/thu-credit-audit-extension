@@ -17,6 +17,8 @@ const rawFrame = $('#rawFrame');
 let lastRows = [];
 let lastReport = null; // ⬅️ 儲存最近一次比對結果
 let lastFetchedHtml = ''; // ⬅️ 新增：儲存最近一次校方回傳原始 HTML，供 iframe 失敗時解析
+let lastFlattenedCurriculum = null; // ⬅️ 新增：展平後的校方原始課綱表 (matrix)
+let lastMustInfo = null; // ⬅️ 新增：最近一次解析出的必修課程資訊（compare 或 export 用）
 
 function setStatus(msg) { statusEl.textContent = msg || ''; }
 
@@ -317,6 +319,145 @@ function buildCSVWithReport(rawColumns, rawRows, report) {
   return lines.join('\r\n');
 }
 
+// ========== 新版：將校方原始（新版）課綱表 + 必修解析 + 比對結果整合輸出 ==========
+function flattenCurriculumTable() {
+  try {
+    const table = findCurriculumTable();
+    if (!table) return null;
+    // 展平 colSpan / rowSpan
+    const matrix = [];
+    const rows = Array.from(table.rows);
+    for (let r = 0; r < rows.length; r++) {
+      const tr = rows[r];
+      if (!matrix[r]) matrix[r] = [];
+      let cIndex = 0;
+      const cells = Array.from(tr.cells);
+      for (const cell of cells) {
+        // 找到下一個空欄位
+        while (matrix[r][cIndex] !== undefined) cIndex++;
+        const text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+        const colspan = parseInt(cell.colSpan, 10) || 1;
+        const rowspan = parseInt(cell.rowSpan, 10) || 1;
+        for (let rr = 0; rr < rowspan; rr++) {
+          const targetR = r + rr;
+            if (!matrix[targetR]) matrix[targetR] = [];
+          for (let cc = 0; cc < colspan; cc++) {
+            const targetC = cIndex + cc;
+            // 若該格已被占用，往後找下一格（理論上不應發生，防護）
+            let finalC = targetC;
+            while (matrix[targetR][finalC] !== undefined) finalC++;
+            matrix[targetR][finalC] = text;
+          }
+        }
+        cIndex += colspan;
+      }
+    }
+    // 去尾端全部空字串欄位（若有）
+    for (let i = 0; i < matrix.length; i++) {
+      while (matrix[i].length && /^(?:\s*)$/.test(matrix[i][matrix[i].length - 1] || '')) {
+        matrix[i].pop();
+      }
+    }
+    return matrix;
+  } catch (e) {
+    console.warn('展平課綱表失敗：', e);
+    return null;
+  }
+}
+
+function prettifyNameForExport(name){
+  if(!name) return '';
+  let out = String(name);
+  out = out.replace(/^[0-9A-Za-z]+-\s*/, '');
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const m = out.match(/^(.*?)(\s*\((?:[^)]|\)[^)]*?)*\)\s*)$/);
+    if (m) {
+      const full = m[2];
+      if (/[A-Za-z]/.test(full)) { out = m[1].trimEnd(); changed = true; continue; }
+    }
+    out = out.replace(/\s*\((?=[^)]*[A-Za-z])[\s\S]*$/, '');
+  }
+  return out.trim();
+}
+
+function toCSVLineNew(arr){
+  const esc = (v) => '"' + String(v ?? '').replace(/"/g,'""') + '"';
+  const fix = (s) => {
+    const str = String(s ?? '');
+    if (/^\d{12,}$/.test(str)) return "'" + str; // 避免科學記號
+    return str;
+  };
+  return arr.map(x => esc(fix(x))).join(',');
+}
+
+function buildCSVv2() {
+  const lines = [];
+  // 僅輸出比對結果（需已執行「抓成績＋比對」）
+  if (lastReport) {
+    lines.push('=== 比對參數 ===');
+    const stypeDisplay = (stypeEl.options[stypeEl.selectedIndex]?.textContent || '').trim() || stypeEl.value;
+    const majrDisplay  = (majrEl.options[majrEl.selectedIndex]?.textContent  || '').trim() || majrEl.value;
+    const subMajrOpt = getSubMajrOptionEl();
+    let subMajrDisplay = '';
+    if (subMajrOpt) {
+      const label = subMajrOpt.closest('label');
+      subMajrDisplay = (label ? label.textContent : subMajrOpt.value || '').trim();
+    }
+    // 參數列：顯示文字 + (代碼)（若文字與代碼不同才加）
+    function combine(display, code){
+      if (!code) return display;
+      return display && display !== code ? `${display} (${code})` : display || code;
+    }
+    lines.push(toCSVLineNew(['學年度', setyearEl.value]));
+    lines.push(toCSVLineNew(['學生類型', combine(stypeDisplay, stypeEl.value)]));
+    lines.push(toCSVLineNew(['學系', combine(majrDisplay, majrEl.value)]));
+    if (subMajrDisplay) lines.push(toCSVLineNew(['子學系', subMajrDisplay]));
+    lines.push('');
+
+    const s = lastReport.summary || {};
+    lines.push('=== 比對摘要 Comparison Summary ===');
+    lines.push(toCSVLineNew(['已修總學分 Earned Total Credits', s.earnedTotalCredits]));
+    lines.push(toCSVLineNew(['必修應修學分合計 Must Total Credits', s.mustTotalCredits]));
+    lines.push(toCSVLineNew(['必修已修學分 Earned Required Credits', s.earnedRequiredCredits]));
+    lines.push(toCSVLineNew(['必修尚缺學分 Missing Required Credits', s.missingRequiredCredits]));
+    if (s.electiveCreditsTarget != null) {
+      lines.push(toCSVLineNew(['選修應修學分 Elective Target', s.electiveCreditsTarget]));
+      lines.push(toCSVLineNew(['已修選修(估算) Earned Elective', s.earnedElectiveCredits]));
+    }
+    if (s.graduateCreditsTarget != null) {
+      lines.push(toCSVLineNew(['畢業學分門檻 Graduate Credits Target', s.graduateCreditsTarget]));
+      lines.push(toCSVLineNew(['距離畢業尚缺 Remaining To Graduate', s.remainingToGraduate]));
+    }
+    lines.push('');
+
+    lines.push('=== 已通過的必修 Passed Required ===');
+    lines.push(toCSVLineNew(['顯示課名 Display Name', '原始課名 Raw Name', '學分 Credit', '學年度 Year', '學期 Term', '選課代號 Code', 'GPA/備註 GPA']));
+    for (const x of (lastReport.details?.passedRequired || [])) {
+      const src = x.source || {};
+      lines.push(toCSVLineNew([prettifyNameForExport(x.name), x.name, x.credit, src.year, src.term, src.code, src.gpa]));
+    }
+    lines.push('');
+
+    lines.push('=== 尚未通過的必修 Missing Required ===');
+    lines.push(toCSVLineNew(['顯示課名 Display Name', '原始課名 Raw Name', '學分 Credit']));
+    for (const x of (lastReport.details?.missingRequired || [])) {
+      lines.push(toCSVLineNew([prettifyNameForExport(x.name), x.name, x.credit]));
+    }
+    lines.push('');
+
+    lines.push('=== 已通過但未匹配必修的課程 Unmatched Passed Courses ===');
+    lines.push(toCSVLineNew(['學年度 Year', '學期 Term', '選課代號 Code', '科目名稱 Name', '顯示課名 Display Name', '學分 Credit', 'GPA']));
+    for (const r of (lastReport.details?.unmatchedPassed || [])) {
+      lines.push(toCSVLineNew([r.year, r.term, r.code, r.name, prettifyNameForExport(r.name), r.credit, r.gpa]));
+    }
+    lines.push('');
+  }
+
+  return lines.join('\r\n');
+}
+
 // ---------- 事件 ----------
 async function handleFetch() {
   setStatus('查詢中…');
@@ -325,6 +466,8 @@ async function handleFetch() {
   resultEl.style.display = 'none';
   exportBtn.disabled = true;
   lastRows = [];
+  lastFlattenedCurriculum = null;
+  lastMustInfo = null;
 
   const setyear = setyearEl.value;
   const stype = stypeEl.value;
@@ -351,6 +494,8 @@ async function handleFetch() {
   const parsed = parseMustTable(html);
   lastRows = parsed;          // 讓比對/CSV 照常使用
   // 不呼叫 renderTable(parsed)
+  // 另外主動展平整份課綱表供新版 CSV 使用
+  lastFlattenedCurriculum = flattenCurriculumTable();
   
   // 如果有解析到資料，啟用匯出按鈕
   if (parsed.rows && parsed.rows.length > 0) {
@@ -361,15 +506,14 @@ async function handleFetch() {
 }
 
 async function handleExport() {
-  if (!lastRows || !lastRows.rows || !lastRows.rows.length) return;
-
-  // 用 CRLF，且加 BOM，Excel 開啟不會亂碼
-  const csv = buildCSVWithReport(lastRows.columns, lastRows.rows, lastReport);
+  if (!lastReport) { setStatus('請先按「抓成績＋比對」再匯出報告'); return; }
+  // 僅包含比對報告
+  const csv = buildCSVv2();
   const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
 
   const url = URL.createObjectURL(blob);
   const hasReport = !!lastReport;
-  const filename = `THU_mustlist_${setyearEl.value}_${stypeEl.value}_${majrEl.value}${hasReport ? '_with-report' : ''}.csv`;
+  const filename = `THU_compare_report_${setyearEl.value}_${stypeEl.value}_${majrEl.value}.csv`;
   chrome.downloads.download({ url, filename, saveAs: true });
 }
 
@@ -871,10 +1015,10 @@ async function handleCompare() {
     setStatus(`擷取到 ${transcript.length} 筆成績，解析必修表中…`);
 
     console.log('開始解析必修表...');
-    const mustCourses = parseMustListFromPopup(); // 需先按「查詢」抓到必修
-    console.log('解析到的必修課程:', mustCourses);
+  lastMustInfo = parseMustListFromPopup(); // 需先按「查詢」抓到必修
+  console.log('解析到的必修課程:', lastMustInfo);
     
-    const report = compareTranscriptWithMust(transcript, mustCourses);
+  const report = compareTranscriptWithMust(transcript, lastMustInfo);
 
     renderComparisonReport(report);
     lastReport = report; // ⬅️ 存起來，匯出用
