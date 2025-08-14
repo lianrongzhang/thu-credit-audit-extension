@@ -8,6 +8,7 @@ const resultEl = $('#result');
 const setyearEl = $('#setyear');
 const stypeEl = $('#stype');
 const majrEl = $('#majr');
+const subMajrEl = $('#subMajr');
 const fetchBtn = $('#fetchBtn');
 const exportBtn = $('#exportBtn');
 
@@ -20,6 +21,16 @@ function htmlToDoc(html) {
   const doc = document.implementation.createHTMLDocument('resp');
   doc.documentElement.innerHTML = html;
   return doc;
+}
+
+function getSubMajrOptionEl() {
+  // 先找已選取的（radio/option），再退而求其次找第一個
+  return (
+    document.querySelector('#subMajr [name="p_grop"]:checked') ||
+    document.querySelector('#subMajr [name="p_grop"]') ||
+    document.querySelector('#subMajr [name="p_grop[]"]:checked') ||
+    document.querySelector('#subMajr [name="p_grop[]"]')
+  );
 }
 
 // ---------- 解析工具：學年度 / 學系 ----------
@@ -77,6 +88,11 @@ function parseMajrOptions(html) {
   return opts;
 }
 
+function renderSubMajrOptionsInDOM(html) {
+  const sel = subMajrEl;
+  sel.innerHTML = html;
+}
+
 // ---------- 動態載入 ----------
 async function loadYears() {
   setStatus('載入學年度清單…');
@@ -120,6 +136,26 @@ async function loadMajr() {
     setStatus('學系清單已載入');
   }
 }
+
+async function loadSubMajr() {
+  setStatus('載入子學系清單…');
+  const { ok, html, error } = await chrome.runtime.sendMessage({
+    type: 'LOAD_SUBMAJR_OPTIONS',
+    payload: { stype: stypeEl.value, majr: majrEl.value }
+  });
+  if (!ok) { setStatus('載入失敗：' + error); return; }
+  const trimmed_html = html.replace(/&nbsp;/g, '');
+  renderSubMajrOptionsInDOM(trimmed_html);
+
+  // 可選：若有多個選項，預設勾第一個
+  const first = getSubMajrOptionEl();
+  if (first && !document.querySelector('#subMajr [name="p_grop"]:checked')) {
+    first.checked = true;
+  }
+
+  setStatus('子學系清單已載入');
+}
+
 
 // ---------- 解析表格 / 渲染 / 匯出 ----------
 function parseMustTable(html) {
@@ -263,9 +299,14 @@ async function handleFetch() {
   const stype = stypeEl.value;
   const majr = majrEl.value;
 
+  const subMajrElNow = getSubMajrOptionEl();  // ⬅️ 每次呼叫即時抓
+  const payload = subMajrElNow && subMajrElNow.value
+    ? { setyear, stype, majr, subMajr: subMajrElNow.value }
+    : { setyear, stype, majr };
+
   const { ok, html, error } = await chrome.runtime.sendMessage({
     type: 'FETCH_MUSTLIST',
-    payload: { setyear, stype, majr }
+    payload
   });
   if (!ok) { setStatus('查詢失敗：' + error); return; }
 
@@ -291,6 +332,7 @@ async function handleExport() {
 // 綁定事件
 stypeEl.addEventListener('change', loadMajr);
 setyearEl.addEventListener('change', loadMajr);
+majrEl.addEventListener('change', loadSubMajr);
 fetchBtn.addEventListener('click', handleFetch);
 exportBtn.addEventListener('click', handleExport);
 
