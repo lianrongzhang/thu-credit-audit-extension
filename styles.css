@@ -8,10 +8,19 @@ button { flex:1; padding:8px; cursor:pointer; }
 button[disabled] { opacity: .6; cursor: not-allowed; }
 .status { margin-top:10px; font-size: 12px; color:#555; }
 .status.error { color: #b00020; }
-.result { margin-top: 10px; max-height: 360px; overflow:auto; border:1px solid #eee; padding:8px; }
+.result { margin-top: 10px; max-height: 600px; overflow:auto; border:1px solid #eee; padding:0; }
 .table { border-collapse: collapse; width:100%; font-size: 12px; }
 .table th, .table td { border:1px solid #ddd; padding:4px 6px; white-space: nowrap; }
 .table th { background:#fafafa; position: sticky; top: 0; }
 .empty { color:#999; }
 .spinner { display:inline-block; width: 14px; height:14px; border-radius:50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; vertical-align:-2px; margin-right:6px; }
 @keyframes spin { to { transform: rotate(360deg) }}
+
+/* iframe 樣式 */
+.result iframe {
+  display: block;
+  width: 100%;
+  border: none;
+  background: #fff;
+  border-radius: 4px;
+}

@@ -40,10 +40,17 @@
       <button id="exportBtn" disabled>匯出 CSV</button>
     </div>
 
-    
-
     <div id="status" class="status"></div>
-    <div id="result" class="result"></div>
+    
+    <!-- 原始表格（校方回傳 HTML 的預覽） -->
+    <div id="rawPanel" style="margin-top:12px;">
+      <div style="font-weight:600;margin-bottom:6px;">原始表格（校方回傳）</div>
+      <iframe id="rawFrame"
+              style="width:100%;height:520px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;"
+              sandbox="allow-popups allow-top-navigation-by-user-activation"></iframe>
+    </div>
+
+    <div id="result" class="result" style="display:none;"></div>
   </div>
 
   <script src="popup.js"></script>
