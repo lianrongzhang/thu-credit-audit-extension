@@ -13,6 +13,7 @@ const fetchBtn = $('#fetchBtn');
 const exportBtn = $('#exportBtn');
 const compareBtn = $('#compareBtn');
 const rawFrame = $('#rawFrame');
+const refreshYearsBtn = $('#refreshYearsBtn');
 
 let lastRows = [];
 let lastReport = null; // ⬅️ 儲存最近一次比對結果
@@ -31,31 +32,28 @@ function htmlToDoc(html) {
 // 使用 iframe + srcdoc 來完全隔離伺服器回傳的 HTML
 function renderRawHtmlInIframe(html, baseHref = 'https://fsis.thu.edu.tw/') {
   if (!rawFrame) return;
-
-  // 讓相對連結可用、且一律新分頁
   const baseTag = `<base href="${baseHref}" target="_blank">`;
-
+  const injectStyle = ''; // 不再強加任何樣式，完全使用校方原始 HTML
   let srcdoc = '';
   if (/<html[\s>]/i.test(html)) {
-    // 已經是完整 HTML：插入 <base> 到 <head>
     if (/<head[\s>]/i.test(html)) {
-      srcdoc = html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}`);
+      srcdoc = html.replace(/<head[^>]*>/i, (m) => `${m}\n${baseTag}${injectStyle}`);
     } else {
-      srcdoc = html.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}</head>`);
+      srcdoc = html.replace(/<html[^>]*>/i, (m) => `${m}\n<head>${baseTag}${injectStyle}</head>`);
     }
   } else {
-    // 不是完整文件：包一層
-    srcdoc = `<!doctype html>
-<html>
-<head>${baseTag}<meta charset="utf-8"><style>body{margin:8px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans TC",Arial,sans-serif;}</style></head>
-<body>${html}</body></html>`;
+    srcdoc = `<!doctype html><html><head>${baseTag}<meta charset="utf-8">${injectStyle}</head><body>${html}</body></html>`;
   }
-
-  rawFrame.srcdoc = srcdoc; // sandbox iframe 顯示，不執行對方腳本
+  rawFrame.srcdoc = srcdoc;
 }
 
 function getSubMajrOptionEl() {
-  // 先找已選取的（radio/option），再退而求其次找第一個
+  // 新版：若 #subMajr 為 <select>，直接回傳其目前選項（供取得 value 與顯示文字）
+  const sel = document.querySelector('#subMajr');
+  if (sel && sel.tagName === 'SELECT') {
+    return sel.options[sel.selectedIndex] || sel; // 保持與舊邏輯相容（取 .value / .textContent）
+  }
+  // 舊版（radio / checkbox）相容邏輯
   return (
     document.querySelector('#subMajr [name="p_grop"]:checked') ||
     document.querySelector('#subMajr [name="p_grop"]') ||
@@ -120,8 +118,20 @@ function parseMajrOptions(html) {
 }
 
 function renderSubMajrOptionsInDOM(html) {
-  const sel = subMajrEl;
-  sel.innerHTML = html;
+  // 解析出 option 並塞到 select
+  if (!subMajrEl) return;
+  // 建立暫存節點抽取 option
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  const options = Array.from(temp.querySelectorAll('option'));
+  subMajrEl.innerHTML = '';
+  for (const op of options) {
+    if (!op.value) continue;
+    const o = document.createElement('option');
+    o.value = op.value.trim();
+    o.textContent = (op.textContent || '').replace(/^[\s\-–]+/, '').trim();
+    subMajrEl.appendChild(o);
+  }
 }
 
 // ---------- 動態載入 ----------
@@ -169,24 +179,18 @@ async function loadMajr() {
 }
 
 async function loadSubMajr() {
-  setStatus('載入子學系清單…');
+  setStatus('載入組別…');
   const { ok, html, error } = await chrome.runtime.sendMessage({
     type: 'LOAD_SUBMAJR_OPTIONS',
     payload: { stype: stypeEl.value, majr: majrEl.value }
   });
-  if (!ok) { setStatus('載入失敗：' + error); return; }
+  if (!ok) { setStatus('組別載入失敗：' + error); return; }
   const trimmed_html = html.replace(/&nbsp;/g, '');
   renderSubMajrOptionsInDOM(trimmed_html);
-
-  // 可選：若有多個選項，預設勾第一個
-  const first = getSubMajrOptionEl();
-  if (first && !document.querySelector('#subMajr [name="p_grop"]:checked')) {
-    first.checked = true;
-  }
-
-  setStatus('子學系清單已載入');
+  // 嘗試預選第一個
+  if (subMajrEl && subMajrEl.options.length) subMajrEl.selectedIndex = 0;
+  setStatus('組別已載入');
 }
-
 
 // ---------- 解析表格 / 渲染 / 匯出 ----------
 function parseMustTable(html) {
@@ -248,7 +252,7 @@ function toCSV(columns, rows) {
   const esc = (s) => '"' + String(s).replace(/"/g, '""') + '"';
   const lines = [];
   if (columns.length) lines.push(columns.map(esc).join(','));
-  for (const r of rows) lines.push(r.map(esc).join(','));
+  for (const r of (rows || [])) lines.push(r.map(esc).join(','));
   return lines.join('\r\n');
 }
 
@@ -472,11 +476,9 @@ async function handleFetch() {
   const setyear = setyearEl.value;
   const stype = stypeEl.value;
   const majr = majrEl.value;
-
-  const subMajrElNow = getSubMajrOptionEl();  // ⬅️ 每次呼叫即時抓
-  const payload = subMajrElNow && subMajrElNow.value
-    ? { setyear, stype, majr, subMajr: subMajrElNow.value }
-    : { setyear, stype, majr };
+  const groupEl = getSubMajrOptionEl();
+  const groupVal = groupEl ? (groupEl.value || groupEl.getAttribute('value') || '').trim() : '';
+  const payload = groupVal ? { setyear, stype, majr, subMajr: groupVal } : { setyear, stype, majr };
 
   const { ok, html, error } = await chrome.runtime.sendMessage({
     type: 'FETCH_MUSTLIST',
@@ -524,6 +526,19 @@ majrEl.addEventListener('change', loadSubMajr);
 fetchBtn.addEventListener('click', handleFetch);
 exportBtn.addEventListener('click', handleExport);
 compareBtn.addEventListener('click', handleCompare);
+if (refreshYearsBtn) {
+  refreshYearsBtn.addEventListener('click', async () => {
+    try {
+      setStatus('重新載入學年度 / 學系…');
+      await loadYears();
+      await loadMajr();
+      await loadSubMajr();
+      setStatus('已重新載入');
+    } catch (e) {
+      setStatus('重載失敗：' + e.message);
+    }
+  });
+}
 
 // 啟動流程：先載年度，再載學系
 document.addEventListener('DOMContentLoaded', async () => {
@@ -816,7 +831,7 @@ function parseMustListFromPopup() {
 
 function toHalfParen(s){ return s.replace(/（/g,'(').replace(/）/g,')'); }
 function chineseOrdinalToRoman(s){
-  return s.replace(/一/g,'I').replace(/二/g,'II').replace(/三/g,'III').replace(/四/g,'IV').replace(/五/g,'V');
+  return s.replace(/一/g,'I').replace(/二/g,'II').replace(/三/g,'III').replace(/四/g,'IV');
 }
 function romanParenToHash(s){
   // 注意順序：先 III/IV/II，再 I，避免部分替換
@@ -925,87 +940,60 @@ function compareTranscriptWithMust(transcript, mustInfo){
 
 // ★ 若仍在缺學分或有未通過必修，就不要顯示「🎉」
 function renderComparisonReport(report) {
-  const wrap = document.createElement('div');
-  wrap.className = 'compare-report';
   const s = report.summary;
 
-  // 顯示用課名美化：拿掉開頭代碼與純英文括號備註 (Seminar (I)) / (Masters’ Thesis) 等
   function prettifyCourseName(name){
     if(!name) return '';
-    let out = String(name);
-    // 去前綴代碼 28126- / ABC123- 等
-    out = out.replace(/^[0-9A-Za-z]+-\s*/, '');
-    // 移除尾端含英文字母的括號（可能含內層括號），保留中文/全形括號內容
-    // 例如："專題討論（一） (Seminar (I))" → "專題討論（一）"
-    // 規則：找到第一個 尾端 空白 + '(' 直到結尾；若括號內容含 A-Za-z 則整段砍掉
-    // 可能還有多重英文括號，迴圈處理
+    let out = String(name).replace(/^[0-9A-Za-z]+-\s*/, '');
     let changed = true;
     while (changed) {
       changed = false;
-      const m = out.match(/^(.*?)(\s*\((?:[^)]|\)[^)]*?)*\)\s*)$/); // 粗略抓最後一段括號
-      if (m) {
-        const full = m[2];
-        if (/[A-Za-z]/.test(full)) { // 只有含英文字母才去掉
-          out = m[1].trimEnd();
-          changed = true;
-          continue;
-        }
-      }
-      // 簡化版本：若剩餘尾端形如 (....) 且含英文字母直接砍
-      out = out.replace(/\s*\((?=[^)]*[A-Za-z])[\s\S]*$/,'');
+      const m = out.match(/^(.*?)(\s*\((?:[^)]|\)[^)]*?)*\)\s*)$/);
+      if (m) { const full = m[2]; if (/[A-Za-z]/.test(full)) { out = m[1].trimEnd(); changed = true; continue; } }
+      out = out.replace(/\s*\((?=[^)]*[A-Za-z])[\s\S]*$/, '');
     }
-    // 去除多餘空白
-    out = out.trim();
     return out.trim();
   }
 
-  const lines = [];
-  lines.push('<h3>比對結果</h3>');
-  lines.push('<ul class="stat">');
-  lines.push(`<li>已修總學分：<b>${s.earnedTotalCredits}</b></li>`);
-  lines.push(`<li>必修應修學分合計：<b>${s.mustTotalCredits}</b></li>`);
-  lines.push(`<li>必修已修學分：<b>${s.earnedRequiredCredits}</b></li>`);
-  lines.push(`<li>必修尚缺學分：<b>${s.missingRequiredCredits}</b></li>`);
-  if (s.electiveCreditsTarget != null) {
-    lines.push(`<li>選修應修學分：<b>${s.electiveCreditsTarget}</b>（已修選修估算：<b>${s.earnedElectiveCredits}</b>）</li>`);
-  }
-  if (s.graduateCreditsTarget != null) {
-    lines.push(`<li>畢業學分門檻：<b>${s.graduateCreditsTarget}</b>（距離畢業還差：<b>${s.remainingToGraduate}</b>）</li>`);
-  }
-  lines.push('</ul>');
+  const summaryLines = [];
+  summaryLines.push('<details open><summary>比對摘要</summary><ol>');
+  summaryLines.push(`<li>已修總學分：<b>${s.earnedTotalCredits}</b></li>`);
+  summaryLines.push(`<li>必修應修學分合計：<b>${s.mustTotalCredits}</b></li>`);
+  summaryLines.push(`<li>必修已修學分：<b>${s.earnedRequiredCredits}</b></li>`);
+  summaryLines.push(`<li>必修尚缺學分：<b>${s.missingRequiredCredits}</b></li>`);
+  if (s.electiveCreditsTarget != null) summaryLines.push(`<li>選修應修學分：<b>${s.electiveCreditsTarget}</b>（已修選修估算：<b>${s.earnedElectiveCredits}</b>）</li>`);
+  if (s.graduateCreditsTarget != null) summaryLines.push(`<li>畢業學分門檻：<b>${s.graduateCreditsTarget}</b>（距離畢業還差：<b>${s.remainingToGraduate}</b>）</li>`);
+  summaryLines.push('</ol></details>');
 
-  lines.push(`<details open><summary>已通過的必修（${report.details.passedRequired.length} 門）</summary>`);
-  lines.push(`<ol>${report.details.passedRequired.map(x => `<li>${prettifyCourseName(x.name)}（${x.credit}學分）</li>`).join('')}</ol>`);
-  lines.push('</details>');
+  const passed = report.details.passedRequired || [];
+  const missing = report.details.missingRequired || [];
+  const passedHTML = `<details open><summary>已通過的必修（${passed.length} 門）</summary><ol>${passed.map(x=>`<li>${prettifyCourseName(x.name)}（${x.credit}學分）</li>`).join('')}</ol></details>`;
+  const missingHTML = `<details ${missing.length? 'open':''}><summary>尚未通過的必修（${missing.length} 門）</summary>${missing.length? `<ol>${missing.map(x=>`<li>${prettifyCourseName(x.name)}（${x.credit}學分）</li>`).join('')}</ol>`:'<div>目前無尚未通過的必修。</div>'}</details>`;
+  const celebration = (s.missingRequiredCredits===0 && missing.length===0)? '<div class="all-done">🎉 必修皆已通過！</div>':'';
 
-  const missCnt = report.details.missingRequired.length;
-  lines.push(`<details ${missCnt ? 'open' : ''}><summary>尚未通過的必修（${missCnt} 門）</summary>`);
-  lines.push(missCnt
-    ? `<ol>${report.details.missingRequired.map(x => `<li>${prettifyCourseName(x.name)}（${x.credit}學分）</li>`).join('')}</ol>`
-    : '<div>目前無尚未通過的必修。</div>');
-  lines.push('</details>');
+  const wrap = document.createElement('div');
+  wrap.className = 'compare-report';
+  wrap.innerHTML = `
+    <h3>比對結果</h3>
+    <div class="compare-layout">
+      <div class="compare-left">
+        ${summaryLines.join('')}
+        ${passedHTML}
+        ${missingHTML}
+        ${celebration}
+      </div>
+      <div class="compare-right">
+        <div class="viz-placeholder" aria-hidden="true">（預留圖表區）</div>
+      </div>
+    </div>`;
 
-  // 只有在「缺學分=0 且 未通過清單=0」時才顯示 🎉
-  if (s.missingRequiredCredits === 0 && report.details.missingRequired.length === 0) {
-    lines.push('<div>🎉 必修皆已通過！</div>');
-  }
-
-  wrap.innerHTML = lines.join('');
-  
-  // 找到 rawPanel 並在其後插入比對結果
   const rawPanel = document.querySelector('#rawPanel');
-  
-  // 移除舊的比對報告（如果存在）
-  const oldReport = document.querySelector('.compare-report');
-  if (oldReport) oldReport.remove();
-  
-  // 添加分隔線和新的比對報告
-  const sep = document.createElement('hr');
-  sep.style.margin = '20px 0';
+  const oldReport = document.querySelector('.compare-report'); if (oldReport) oldReport.remove();
+  const oldSep = document.querySelector('#compareSep'); if (oldSep) oldSep.remove();
+  const sep = document.createElement('hr'); sep.style.margin='20px 0'; sep.id='compareSep';
   rawPanel.parentNode.insertBefore(sep, rawPanel.nextSibling);
   rawPanel.parentNode.insertBefore(wrap, sep.nextSibling);
 }
-
 
 // ========= 新增：主流程（按鈕事件） =========
 async function handleCompare() {
