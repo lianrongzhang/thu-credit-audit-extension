@@ -29,6 +29,33 @@ function htmlToDoc(html) {
   return doc;
 }
 
+// ===== 全形轉半形（含英數、＋：：等常見符號）=====
+function toHalfWidth(str) {
+  if (!str) return '';
+  return String(str).replace(/[\uFF01-\uFF5E]/g, ch => {
+    return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0);
+  }).replace(/\u3000/g, ' '); // 全形空白
+}
+
+// ===== 學期順序（上=1，下=2，其它盡量拉在後）=====
+function termOrder(t) {
+  const s = String(t || '').trim();
+  if (/^上$/.test(s)) return 1;
+  if (/^下$/.test(s)) return 2;
+  if (/暑|夏/i.test(s)) return 3;
+  // fallback：未知放最後
+  return 9;
+}
+
+// 比較「(year, term)」誰更新
+function isNewer(a, b) {
+  // a / b: { year, term }
+  const ya = parseInt(a.year, 10) || 0;
+  const yb = parseInt(b.year, 10) || 0;
+  if (ya !== yb) return ya > yb;
+  return termOrder(a.term) > termOrder(b.term);
+}
+
 // 使用 iframe + srcdoc 來完全隔離伺服器回傳的 HTML
 function renderRawHtmlInIframe(html, baseHref = 'https://fsis.thu.edu.tw/') {
   if (!rawFrame) return;
@@ -727,6 +754,7 @@ function parseMustListFromPopup() {
         console.log('找到必修學分數:', requiredCreditsTarget);
       }
       // 不 break，繼續找選修/畢業
+      continue;
     }
   if (/選修學分數|Elective\s*Credits/i.test(txt)) { 
       const m = txt.match(/(?:選修學分數|Elective\s*Credits).*?(\d+)/i); 
@@ -767,19 +795,25 @@ function parseMustListFromPopup() {
     if (mCN) nameRaw = mCN[0];
 
     const creditRaw = (tr.cells[creditCol]?.textContent || '').trim();
-    const looksLikeCourse = /^[0-9A-Za-z]{3,}\s*-\s*/.test(nameRaw) || 
-                           /專題|論文|研究|導論|實作|實驗|課程/.test(nameRaw) ||
-                           /Seminar|Thesis|Masters|Research/i.test(nameRaw) ||
-                           (/^\d+$/.test(creditRaw) && parseFloat(creditRaw) > 0); // 如果學分欄是數字，也認為是課程
+    const looksLikeCourse =
+      /^[0-9A-Za-z]{3,}\s*-\s*/.test(nameRaw) ||
+      /專題|論文|研究|導論|實作|實驗|課程|中文|英文|體育|國防/i.test(nameRaw) ||
+      /Seminar|Thesis|Masters|Research|English|Chinese|Physical|Defense/i.test(nameRaw); // 如果學分欄是數字，也認為是課程
 
     if (looksLikeCourse) {
       const credit = parseFloat(creditRaw);
+
+      // 先排除「通識領域」那些非單一課的列
+      if (isGeneralEducationAreaRow(nameRaw, creditRaw)) {
+        continue;
+      }
       console.log('找到課程:', nameRaw, '學分:', credit);
       requiredCourses.push({
         name: nameRaw,
-        key:  normalizeName(nameRaw),         // 你先前已經定義好的正規化：會保留 #1/#2… 序號
+        key:  makeKeyForMust(nameRaw),  // 已正確
         credit: isNaN(credit) ? 0 : credit
       });
+
     }
   }
 
@@ -843,9 +877,47 @@ function romanParenToHash(s){
     .replace(/\(I\)/gi,'#1');
 }
 
+function bucketizeName(baseName) {
+  const raw = toHalfWidth(String(baseName || ''));
+  const s = raw.toLowerCase();
+
+  // 中文
+  if (/中文/.test(s) || /\bchinese\b/.test(s)) return 'series:chinese';
+
+  // 英文（大一 / 大二）
+  if (/大一英/.test(s) || /freshman\s*english/.test(s) || /english.*\b(i|#1|1)\b/.test(s)) return 'series:eng1';
+  if (/大二英/.test(s) || /sophomore\s*english/.test(s) || /english.*\b(ii|#2|2)\b/.test(s)) return 'series:eng2';
+
+  // 體育（0 學分但須通過）
+  if (/大一體育|physical education.*(i|1)/i.test(s)) return 'series:pe1';
+  if (/大二體育|physical education.*(ii|2)/i.test(s)) return 'series:pe2';
+  if (/體育|sports|physical education/i.test(s)) return 'series:pe';
+
+  // 國防（0 學分但須通過）
+  if (/全民國防教育|all[- ]?out\s*defense|national\s*defense/i.test(s)) return 'series:defense';
+
+  // AI 思維 與 4 門替代課 → 視為同一必修
+  if (/ai思維與程式設計|ai\s*thinking|basic\s*program/i.test(s)) return 'series:ai_basic';
+  if (/web程式設計|web\s*program/i.test(s)) return 'series:ai_basic';
+  if (/linux/i.test(s)) return 'series:ai_basic';
+  if (/數據分析資料工程|data\s*analytics.*engineering/i.test(s)) return 'series:ai_basic';
+  if (/物聯網與感測|iot|internet\s*of\s*things.*sensor/i.test(s)) return 'series:ai_basic';
+
+  return null; // 非系列課就不映射
+}
+
+function isGeneralEducationAreaRow(nameRaw, creditRaw) {
+  const s = toHalfWidth(String(nameRaw || '')).toLowerCase();
+  const isArea = /領域/.test(s) ||
+                 /humanities|natural\s*sciences|social\s*sciences|civilization|classic|leadership|ethics|issue[-\s]*oriented|sustainability/i.test(s);
+  const creditEmpty = !creditRaw || !/^\d+(\.\d+)?$/.test(String(creditRaw).trim());
+  return isArea && creditEmpty;
+}
+
 function normalizeName(nameRaw){
   if(!nameRaw) return '';
-  let s = String(nameRaw);
+  // 先做全形→半形，解「Ｃ＋＋」「：」等問題
+  let s = toHalfWidth(String(nameRaw));
 
   // 統一括號 → 中文序號轉羅馬 → 轉 #n
   s = toHalfParen(s);
@@ -855,13 +927,13 @@ function normalizeName(nameRaw){
   // ★ 只要括號裡包含 #n，就把整段括號收斂成 #n（丟掉英文）
   s = s.replace(/\([^)]*#(\d+)[^)]*\)/g, '#$1');
 
-  // 移除其他括號內容
+  // 移除其他括號內容（避免英文副標干擾）
   s = s.replace(/\([^)]*\)/g, '');
 
   // 去掉代碼前綴「12345-」
   s = s.replace(/^[0-9A-Za-z]+-\s*/, '');
 
-  // 去雜訊（保留 #n）
+  // 常見全形冒號已轉半形，再做一次一般化
   s = s.replace(/[()．.，,。；;：:\s]/g,'');
 
   // 去掉重複的 #n（例如 "#1#1" → "#1"）
@@ -870,12 +942,76 @@ function normalizeName(nameRaw){
   return s.toLowerCase();
 }
 
+function normalizeNameForMust(nameRaw) {
+  if (!nameRaw) return '';
+  let s = toHalfWidth(String(nameRaw));
+  // 去掉代碼與連字，例如：11001-中文 → 中文
+  s = s.replace(/^[0-9A-Za-z]+-\s*/, '');
+  // 去除括號（常是英文化名）
+  s = s.replace(/\([^)]*\)/g, '');
+  // 去雜訊標點空白
+  s = s.replace(/[()．.，,。；;：:\s]/g, '');
+  return s;
+}
+
+function normalizeNameForTranscript(nameRaw){
+  if(!nameRaw) return '';
+  let s = toHalfWidth(String(nameRaw));
+
+  s = toHalfParen(s);
+  s = s.replace(/\((.*?)\)/g,(m,inner)=>'('+chineseOrdinalToRoman(inner)+')');
+  s = romanParenToHash(s);
+
+  // 若括號中含 #n，收斂成 #n
+  s = s.replace(/\([^)]*#(\d+)[^)]*\)/g, '#$1');
+  // 其他括號丟掉（英文副標）
+  s = s.replace(/\([^)]*\)/g, '');
+
+  // 去課號前綴
+  s = s.replace(/^[0-9A-Za-z]+-\s*/, '');
+
+  // 去雜訊
+  s = s.replace(/[()．.，,。；;：:\s]/g,'');
+
+  // 去掉重複 #n
+  s = s.replace(/#(\d+)(?:#\1)+/g, '#$1');
+
+  return s.toLowerCase();
+}
+
+
+function makeKeyForMust(nameRaw) {
+  const base = normalizeNameForMust(nameRaw);        // e.g., "中文"
+  const bucket = bucketizeName(base);                 // e.g., "series:chinese"
+  return bucket || normalizeName(base);               // 若非系列課，退回一般 normalizeName
+}
+
+function makeKeyForTranscript(nameRaw) {
+  const base = normalizeNameForTranscript(nameRaw);   // e.g., "中文語文與溝通" → "中文語文與溝通"
+  const bucket = bucketizeName(base);                 // e.g., "series:chinese"
+  return bucket || normalizeName(base);
+}
+
+
+
 function isPassed(gpaText){
   const t = String(gpaText||'').trim();
-  if(!t) return false;
-  if(/抵免|免修|採計|通過/i.test(t)) return true;
-  if(/^f$/i.test(t) || /^w/i.test(t) || /不及格/.test(t)) return false;
-  return true;
+
+  if (!t) return false;
+
+  // 明確通過關鍵字
+  if (/抵免|免修|採計|通過|及格|P(ass)?/i.test(t)) return true;
+
+  // 明確不通過關鍵字與常見代碼
+  if (/(未過|不及格)/.test(t)) return false;
+  if (/^(E|F|I|X|N|NG)\b/i.test(t)) return false; // E/F/I/X/N/NG
+  if (/^W[A-Z]*\b/i.test(t)) return false;        // W, WA, WF...
+
+  // 一般等第：A/B/C/D(+/-) 視為通過
+  if (/^[ABCD][\+\-]?$/.test(t)) return true;
+
+  // 其他未知標記：保守視為未通過，避免高估
+  return false;
 }
 
 
@@ -888,34 +1024,62 @@ function compareTranscriptWithMust(transcript, mustInfo){
   }
 
   let earnedTotalCredits = 0;
-  let earnedRequiredCredits = 0;
-  const passedRequired = new Map(); // key -> {name, credit, source}
-  const unmatchedPassed = [];
+
+  // 先把所有「通過紀錄」按 key 分桶，等等選「最新一次」
+  const passedBuckets = new Map(); // key -> [{record, credit}]
+  const unmatchedPassedCandidates = []; // 暫存未對上必修的通過課
 
   for (const r of transcript){
     const credit = parseFloat(r.credit);
     const passed = isPassed(r.gpa);
-    const key = normalizeName(r.name);
+    if (passed && !isNaN(credit)) {
+      earnedTotalCredits += credit; // 總學分：凡通過即加（0 學分自動不影響）
+    }
+    if (!passed) continue;
 
-    if (passed && !isNaN(credit)) earnedTotalCredits += credit;
-    if (!passed || !key) continue;
+    const key = makeKeyForTranscript(r.name);
+    if (!key) { 
+      // 名稱無法正規化，又通過 → 放入未匹配候選
+      unmatchedPassedCandidates.push(r);
+      continue;
+    }
 
-    if (mustMap.has(key)){
-      if (!passedRequired.has(key)){
-        const req = mustMap.get(key);
-        const useCredit = req.credit || credit || 0;
-        passedRequired.set(key, { name: req.name, credit: useCredit, source: r });
-        earnedRequiredCredits += useCredit;
-      }
+    if (mustMap.has(key)) {
+      const arr = passedBuckets.get(key) || [];
+      arr.push({ record: r, credit });
+      passedBuckets.set(key, arr);
     } else {
-      unmatchedPassed.push(r);
+      unmatchedPassedCandidates.push(r);
     }
   }
 
+  // 從各桶中挑選「最新一次通過」
+  const passedRequired = new Map(); // key -> {name, credit, source}
+  let earnedRequiredCredits = 0;
+
+  for (const [key, attempts] of passedBuckets.entries()) {
+    // 取最後一次（年/學期最大）
+    attempts.sort((a, b) => {
+      return isNewer(a.record, b.record) ? 1 : -1;
+    });
+    const latest = attempts[attempts.length - 1]; // 最新一次通過
+    const req = mustMap.get(key);
+    const useCredit = (req && req.credit) ? req.credit : (latest.credit || 0);
+    passedRequired.set(key, { name: req.name, credit: useCredit, source: latest.record });
+    earnedRequiredCredits += useCredit;
+  }
+
+  // 找出缺的必修
   const missingRequired = [];
   for (const [k, req] of mustMap.entries()){
-    if (!passedRequired.has(k)) missingRequired.push({ name: req.name, credit: req.credit });
+    if (!passedRequired.has(k)) {
+      // 這些可能包含 0 學分必修（體育/國防），名稱對不到就會在這裡
+      missingRequired.push({ name: req.name, credit: req.credit });
+    }
   }
+
+  // 「未匹配但通過」= 確實通過、又沒被吃進必修的
+  const unmatchedPassed = unmatchedPassedCandidates;
 
   const earnedElectiveCredits = Math.max(0, earnedTotalCredits - earnedRequiredCredits);
 
@@ -937,6 +1101,7 @@ function compareTranscriptWithMust(transcript, mustInfo){
     }
   };
 }
+
 
 // ★ 若仍在缺學分或有未通過必修，就不要顯示「🎉」
 function renderComparisonReport(report) {
