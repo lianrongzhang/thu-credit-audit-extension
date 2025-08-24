@@ -60,7 +60,175 @@ function isNewer(a, b) {
 function renderRawHtmlInIframe(html, baseHref = 'https://fsis.thu.edu.tw/') {
   if (!rawFrame) return;
   const baseTag = `<base href="${baseHref}" target="_blank">`;
-  const injectStyle = ''; // 不再強加任何樣式，完全使用校方原始 HTML
+  // 注入表格美化樣式
+  // const injectStyle = `
+  //   <style>
+  //     body { 
+  //       line-height: 1.4 !important;
+  //       margin: 15px !important;
+  //       background: #f8fafc !important;
+  //     }
+      
+  //     table {
+  //       border-collapse: collapse !important;
+  //       width: 100% !important;
+  //       margin: 10px 0 !important;
+  //       font-size: 12px !important;
+  //       background: #fff !important;
+  //       box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+  //       border-radius: 6px !important;
+  //       overflow: hidden !important;
+  //     }
+      
+  //     table td, table th {
+  //       border: 1px solid #d1d5db !important;
+  //       padding: 8px 6px !important;
+  //       text-align: center !important;
+  //       vertical-align: middle !important;
+  //     }
+      
+  //     table th {
+  //       background: #f3f4f6 !important;
+  //       font-weight: bold !important;
+  //       color: #374151 !important;
+  //       text-align: center !important;
+  //     }
+      
+  //     table tbody tr:nth-child(odd) {
+  //       background: #f9fafb !important;
+  //     }
+      
+  //     table tbody tr:hover {
+  //       background: #e5e7eb !important;
+  //     }
+      
+  //     /* 科目名稱欄位左對齊 */
+  //     table td:nth-child(2) {
+  //       padding-left: 10px !important;
+  //     }
+      
+  //     /* 學分數和課程類別欄位 */
+  //     table td:nth-child(1), table td:nth-child(3) {
+  //       font-weight: 500 !important;
+  //     }
+      
+  //     /* 備註欄位 */
+  //     table td:last-child {
+  //       font-size: 11px !important;
+  //       color: #6b7280 !important;
+  //       padding-left: 8px !important;
+  //     }
+      
+  //     /* 標題美化 */
+  //     h4 {
+  //       color: #1f2937 !important;
+  //       font-size: 16px !important;
+  //       margin: 20px 0 15px !important;
+  //       font-weight: bold !important;
+  //       text-align: center !important;
+  //       line-height: 1.5 !important;
+  //     }
+      
+  //     /* 統計行美化 */
+  //     table tr:last-child td, table tr:nth-last-child(2) td {
+  //       background: #fef3c7 !important;
+  //       font-weight: bold !important;
+  //       color: #92400e !important;
+  //     }
+      
+  //     /* 鏈接樣式 */
+  //     a {
+  //       color: #2563eb !important;
+  //       text-decoration: none !important;
+  //     }
+      
+  //     a:hover {
+  //       color: #1d4ed8 !important;
+  //       text-decoration: underline !important;
+  //     }
+      
+  //     /* 說明文字樣式 */
+  //     p {
+  //       font-size: 12px !important;
+  //       line-height: 1.5 !important;
+  //       color: #6b7280 !important;
+  //       margin: 15px 0 !important;
+  //     }
+  //   </style>
+  // `;
+const injectStyle = `
+  <style>
+    body { 
+      margin: 15px !important;
+      background: #f8fafc !important;
+      font-family: "Rubik", Helvetica, Arial, serif;
+    }
+
+    table {
+      border-collapse: collapse !important;
+      width: 100% !important;
+      margin: 10px 0 !important;
+      background: #fff !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+      border-radius: 6px !important;
+      overflow: hidden !important;
+    }
+
+    table td, table th {
+      border: 1px solid #d1d5db !important;
+      padding: 8px 6px !important;
+      vertical-align: middle !important;
+      color: #475F7B !important;
+    }
+
+    table th {
+      background: #f3f4f6 !important;
+      font-weight: bold !important;
+      color: #475F7B !important;
+    }
+
+    table tbody tr:nth-child(odd) {
+      background: #f9fafb !important;
+    }
+
+    table tbody tr:hover {
+      background: #e5e7eb !important;
+    }
+
+    /* 統計行美化 */
+    table tr:last-child td, table tr:nth-last-child(2) td {
+      background: #fef3c7 !important;
+      font-weight: bold !important;
+      color: #92400e !important;
+    }
+
+    /* 鏈接顏色 */
+    a {
+      text-decoration: none !important;
+    }
+
+    a:hover {
+      color: #e83e8c !important;
+      text-decoration: underline !important;
+    }
+
+    /* 標題顏色 */
+    h4 {
+      color: #468ff7ff !important;
+      margin: 20px 0 15px !important;
+      font-size: 20px !important;
+      font-weight: normal !important;
+    }
+
+    /* 說明文字顏色 */
+    p {
+      color: #6b7280 !important;
+      margin: 15px 0 !important;
+    }
+  </style>
+`;
+
+  
   let srcdoc = '';
   if (/<html[\s>]/i.test(html)) {
     if (/<head[\s>]/i.test(html)) {
