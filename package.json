@@ -1,0 +1,23 @@
+{
+  "name": "thu-credit-audit-extension",
+  "version": "1.0.0",
+  "description": "一個專為 **東海大學學生** 設計的 Chrome 擴充功能，能夠從學校官網自動擷取與分析「必修科目表」與「歷年成績」，並提供學分比對、修課狀態檢查與 CSV 匯出功能。",
+  "main": "popup.js",
+  "directories": {
+    "test": "tests"
+  },
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.3.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.1"
+  }
+}

@@ -10,6 +10,9 @@
     "activeTab",
     "tabs"
   ],
-  "host_permissions": ["https://fsis.thu.edu.tw/*"],
+  "host_permissions": [
+    "https://fsis.thu.edu.tw/*",
+    "https://fsiso.thu.edu.tw/*"
+  ],
   "background": { "service_worker": "service_worker.js" }
 }
