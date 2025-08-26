@@ -108,14 +108,18 @@ maybe('full login → transcript → popup → compare → export CSV', async ({
     popup.getByRole('button', { name: '匯出 CSV' }).click(),
   ]);
 
-  // 18. Verify download path and filename
-  const suggested = download.suggestedFilename();
-  console.log(suggested);
-  expect(suggested).toMatch(/THU_compare_report_.*\.csv$/);
+  // 18. Verify the CSV was downloaded by saving it with the intended file name
+  // For blob:// downloads via chrome.downloads, Chromium reports a GUID suggested filename.
+  // We build the intended name from the popup selections and save explicitly.
+  const intended = await popup.evaluate(() => {
+    const y = document.querySelector('#setyear')?.value || 'UNKNOWN';
+    const st = document.querySelector('#stype')?.value || 'UNKNOWN';
+    const mj = document.querySelector('#majr')?.value || 'UNKNOWN';
+    return `THU_compare_report_${y}_${st}_${mj}.csv`;
+  });
 
-  // Make sure the downloads dir exists
   if (!fs.existsSync(downloadsDir)) fs.mkdirSync(downloadsDir, { recursive: true });
-  const finalPath = path.join(downloadsDir, suggested);
+  const finalPath = path.join(downloadsDir, intended);
   await download.saveAs(finalPath);
   expect(fs.existsSync(finalPath)).toBeTruthy();
 });
