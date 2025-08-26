@@ -808,20 +808,20 @@ function parseMustListFromPopup() {
   // 將每列合併文字，方便偵測區段
   const rowText = (tr) => Array.from(tr.cells).map(td => (td.textContent || '').trim()).join(' ');
 
-  console.log('表格共有', rows.length, '列資料');
+  // console.log('表格共有', rows.length, '列資料');
   
   // 先掃一遍找到「必修區段標題」所在索引
   let requiredStart = -1;
   for (let i = 0; i < rows.length; i++) {
     const txt = rowText(rows[i]);
-    console.log(`第 ${i} 列內容:`, txt);
+    // console.log(`第 ${i} 列內容:`, txt);
     if (/必修\s*Department Required Courses/i.test(txt) || 
         /^必修\s*$/.test(txt) || 
         /Required\s*Courses/i.test(txt) ||
         /必修課程|必修科目/i.test(txt) ||
         /必修Department/i.test(txt)) {  // 新增：匹配 "必修Department Required Courses"
       requiredStart = i;
-      console.log('找到必修區段標題在第', i, '列');
+      // console.log('找到必修區段標題在第', i, '列');
       break;
     }
   }
@@ -829,7 +829,7 @@ function parseMustListFromPopup() {
 
   // 推斷欄位位置
   const { nameCol, creditCol } = detectFirstCourseColumns(table, requiredStart);
-  console.log('推斷欄位位置 - 課名欄:', nameCol, '學分欄:', creditCol);
+  // console.log('推斷欄位位置 - 課名欄:', nameCol, '學分欄:', creditCol);
 
   const requiredCourses = [];
   let requiredCreditsTarget = null, electiveCreditsTarget = null, graduateCreditsTarget = null;
@@ -844,7 +844,7 @@ function parseMustListFromPopup() {
       const m = txt.match(/(?:必修學分數|Required\s*Credits).*?(\d+)/i); 
       if (m) {
         requiredCreditsTarget = parseInt(m[1],10); 
-        console.log('找到必修學分數:', requiredCreditsTarget);
+        // console.log('找到必修學分數:', requiredCreditsTarget);
       }
       // 不 break，繼續找選修/畢業
       continue;
@@ -853,7 +853,7 @@ function parseMustListFromPopup() {
       const m = txt.match(/(?:選修學分數|Elective\s*Credits).*?(\d+)/i); 
       if (m) {
         electiveCreditsTarget = parseInt(m[1],10);
-        console.log('找到選修學分數:', electiveCreditsTarget);
+        // console.log('找到選修學分數:', electiveCreditsTarget);
       }
       continue; 
     }
@@ -861,7 +861,7 @@ function parseMustListFromPopup() {
       const m = txt.match(/(?:畢業學分數|Graduated?\s*Credits).*?(\d+)/i); 
       if (m) {
         graduateCreditsTarget = parseInt(m[1],10);
-        console.log('找到畢業學分數:', graduateCreditsTarget);
+        // console.log('找到畢業學分數:', graduateCreditsTarget);
       }
       continue; 
     }
@@ -900,7 +900,7 @@ function parseMustListFromPopup() {
       if (isGeneralEducationAreaRow(nameRaw, creditRaw)) {
         continue;
       }
-      console.log('找到課程:', nameRaw, '學分:', credit);
+      // console.log('找到課程:', nameRaw, '學分:', credit);
       requiredCourses.push({
         name: nameRaw,
         key:  makeKeyForMust(nameRaw),  // 已正確
@@ -916,7 +916,7 @@ function parseMustListFromPopup() {
   
   // 如果還沒找到學分數，嘗試從表格的特殊結構中解析
   if (requiredCreditsTarget == null || electiveCreditsTarget == null || graduateCreditsTarget == null) {
-    console.log('嘗試從特殊結構中解析學分數...');
+    // console.log('嘗試從特殊結構中解析學分數...');
     for (let i = 0; i < rows.length; i++) {
       const tr = rows[i];
       if (tr.cells.length >= 3) {
@@ -928,13 +928,13 @@ function parseMustListFromPopup() {
         const combinedText = cell1 + cell2;
         if (/必修學分數.*Required.*Credits/i.test(combinedText) && /^\d+$/.test(cell3)) {
           requiredCreditsTarget = parseInt(cell3, 10);
-          console.log('從特殊結構找到必修學分數:', requiredCreditsTarget);
+          // console.log('從特殊結構找到必修學分數:', requiredCreditsTarget);
         } else if (/選修學分數.*Elective.*Credits/i.test(combinedText) && /^\d+$/.test(cell3)) {
           electiveCreditsTarget = parseInt(cell3, 10);
-          console.log('從特殊結構找到選修學分數:', electiveCreditsTarget);
+          // console.log('從特殊結構找到選修學分數:', electiveCreditsTarget);
         } else if (/畢業學分數.*Graduated.*Credits/i.test(combinedText) && /^\d+$/.test(cell3)) {
           graduateCreditsTarget = parseInt(cell3, 10);
-          console.log('從特殊結構找到畢業學分數:', graduateCreditsTarget);
+          // console.log('從特殊結構找到畢業學分數:', graduateCreditsTarget);
         }
       }
     }
@@ -944,12 +944,12 @@ function parseMustListFromPopup() {
     requiredCreditsTarget = requiredCourses.reduce((s, x) => s + (x.credit || 0), 0);
   }
 
-  console.log('最終解析結果:', {
-    requiredCourses: requiredCourses.length,
-    requiredCreditsTarget,
-    electiveCreditsTarget,
-    graduateCreditsTarget
-  });
+  // console.log('最終解析結果:', {
+  //   requiredCourses: requiredCourses.length,
+  //   requiredCreditsTarget,
+  //   electiveCreditsTarget,
+  //   graduateCreditsTarget
+  // });
 
   return { requiredCourses, requiredCreditsTarget, electiveCreditsTarget, graduateCreditsTarget };
 }
@@ -990,11 +990,9 @@ function bucketizeName(baseName) {
   if (/全民國防教育|all[- ]?out\s*defense|national\s*defense/i.test(s)) return 'series:defense';
 
   // AI 思維 與 4 門替代課 → 視為同一必修
+  // 嚴格化：僅在課名明確為 AI 思維 / AI Thinking / Basic Program 時才視為 ai_basic
+  // 之前把 web/linux/data/iot 一併映射，會造成像 "Linux..." 被誤判為 AI 思維替代，故移除這些寬鬆規則。
   if (/ai思維與程式設計|ai\s*thinking|basic\s*program/i.test(s)) return 'series:ai_basic';
-  if (/web程式設計|web\s*program/i.test(s)) return 'series:ai_basic';
-  if (/linux/i.test(s)) return 'series:ai_basic';
-  if (/數據分析資料工程|data\s*analytics.*engineering/i.test(s)) return 'series:ai_basic';
-  if (/物聯網與感測|iot|internet\s*of\s*things.*sensor/i.test(s)) return 'series:ai_basic';
 
   return null; // 非系列課就不映射
 }
@@ -1038,13 +1036,24 @@ function normalizeName(nameRaw){
 function normalizeNameForMust(nameRaw) {
   if (!nameRaw) return '';
   let s = toHalfWidth(String(nameRaw));
-  // 去掉代碼與連字，例如：11001-中文 → 中文
-  s = s.replace(/^[0-9A-Za-z]+-\s*/, '');
-  // 去除括號（常是英文化名）
+
+  // 統一括號形式、把中文序號 (一/二/三...) 轉為羅馬再轉成 #n
+  s = toHalfParen(s);
+  s = s.replace(/\((.*?)\)/g, (m, inner) => '(' + chineseOrdinalToRoman(inner) + ')');
+  s = romanParenToHash(s);
+
+  // 若括號中含 #n，收斂成 #n（丟掉英文）
+  s = s.replace(/\([^)]*#(\d+)[^)]*\)/g, '#$1');
+  // 移除其他括號內容（避免英文副標干擾）
   s = s.replace(/\([^)]*\)/g, '');
+
+  // 去掉代碼前綴「12345-」
+  s = s.replace(/^[0-9A-Za-z]+-\s*/, '');
   // 去雜訊標點空白
   s = s.replace(/[()．.，,。；;：:\s]/g, '');
-  return s;
+  // 去掉重複的 #n（例如 "#1#1" → "#1")
+  s = s.replace(/#(\d+)(?:#\1)+/g, '#$1');
+  return s.toLowerCase();
 }
 
 function normalizeNameForTranscript(nameRaw){
@@ -1076,12 +1085,18 @@ function normalizeNameForTranscript(nameRaw){
 function makeKeyForMust(nameRaw) {
   const base = normalizeNameForMust(nameRaw);        // e.g., "中文"
   const bucket = bucketizeName(base);                 // e.g., "series:chinese"
+  // if (bucket) {
+  //   try { console.log('makeKeyForMust -> bucket', bucket, 'for', nameRaw); } catch(e){}
+  // }
   return bucket || normalizeName(base);               // 若非系列課，退回一般 normalizeName
 }
 
 function makeKeyForTranscript(nameRaw) {
   const base = normalizeNameForTranscript(nameRaw);   // e.g., "中文語文與溝通" → "中文語文與溝通"
   const bucket = bucketizeName(base);                 // e.g., "series:chinese"
+  // if (bucket) {
+  //   try { console.log('makeKeyForTranscript -> bucket', bucket, 'for', nameRaw); } catch(e){}
+  // }
   return bucket || normalizeName(base);
 }
 
@@ -1121,6 +1136,7 @@ function compareTranscriptWithMust(transcript, mustInfo){
   // 先把所有「通過紀錄」按 key 分桶，等等選「最新一次」
   const passedBuckets = new Map(); // key -> [{record, credit}]
   const unmatchedPassedCandidates = []; // 暫存未對上必修的通過課
+  const matchPairs = []; // record of which transcript rows matched which must key
 
   for (const r of transcript){
     const credit = parseFloat(r.credit);
@@ -1141,6 +1157,9 @@ function compareTranscriptWithMust(transcript, mustInfo){
       const arr = passedBuckets.get(key) || [];
       arr.push({ record: r, credit });
       passedBuckets.set(key, arr);
+  // 記錄配對候選（不代表最終選用哪一筆）
+  const req = mustMap.get(key) || { name: undefined };
+  matchPairs.push({ mustKey: key, mustName: req.name, transcriptName: r.name, year: r.year, term: r.term, code: r.code, credit, gpa: r.gpa });
     } else {
       unmatchedPassedCandidates.push(r);
     }
@@ -1161,6 +1180,9 @@ function compareTranscriptWithMust(transcript, mustInfo){
     passedRequired.set(key, { name: req.name, credit: useCredit, source: latest.record });
     earnedRequiredCredits += useCredit;
   }
+
+  // 在回傳的 details 中包含 matchPairs，並在 console 輸出以便 debug
+  // if (matchPairs.length) console.log('比對配對紀錄 matchPairs:', matchPairs);
 
   // 找出缺的必修
   const missingRequired = [];
@@ -1191,6 +1213,7 @@ function compareTranscriptWithMust(transcript, mustInfo){
       passedRequired: Array.from(passedRequired.values()),
       missingRequired,
       unmatchedPassed
+  , matchPairs
     }
   };
 }
@@ -1255,9 +1278,9 @@ async function handleCompare() {
     const transcript = await scrapeTranscriptFromActiveTab();
     setStatus(`擷取到 ${transcript.length} 筆成績，解析必修表中…`);
 
-    console.log('開始解析必修表...');
+    // console.log('開始解析必修表...');
   lastMustInfo = parseMustListFromPopup(); // 需先按「查詢」抓到必修
-  console.log('解析到的必修課程:', lastMustInfo);
+  // console.log('解析到的必修課程:', lastMustInfo);
     
   const report = compareTranscriptWithMust(transcript, lastMustInfo);
 
